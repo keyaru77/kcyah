@@ -1,95 +1,96 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const cors = require('cors');
+const helmet = require('helmet');
 const { CookieJar } = require('tough-cookie');
 const { wrapper } = require('axios-cookiejar-support');
-const helmet = require('helmet');
-const cors = require('cors');
 
 const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(helmet());
+
 const jar = new CookieJar();
 const client = wrapper(axios.create({ jar }));
 
-app.use(helmet());
-app.use(cors());
+app.get('/manga/:endpoint', async (req, res) => {
+  const { endpoint } = req.params;
+  const url = `https://komikcast.cx/komik/${endpoint}`;
 
-async function fetchMangaDetails(endpoint) {
   try {
-    const { data } = await client.get(`https://komikcast.cx/komik/${endpoint}`);
-    const $ = cheerio.load(data);
-
-    const title = $('h1.entry-title').text().trim();
-    const rating = $('i[itemprop="ratingValue"]').text().trim();
-    const description = $('div.entry-content.entry-content-single p').text().trim();
-
-    const firstChapterUrl = $('.hl-firstlast-ch.first-chapter a').attr('href');
-    const firstChapterTitle = $('.hl-firstlast-ch.first-chapter .barunew').text().trim();
-    const latestChapterUrl = $('.hl-firstlast-ch').last().find('a').attr('href');
-    const latestChapterTitle = $('.hl-firstlast-ch').last().find('.barunew').text().trim();
-
-    const infoBox = {};
-    $('div.col-info-manga-box span').each((i, el) => {
-      const key = $(el).find('b').text().replace(':', '').trim();
-      const value = $(el).clone().children().remove().end().text().trim();
-      infoBox[key] = value;
+    const { data } = await client.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+      },
     });
 
+    const $ = cheerio.load(data);
+    const title = $('h1.entry-title').text().trim();
+    const firstChapter = $('div.hl-firstlast-ch.first-chapter a').attr('href');
+    const firstChapterText = $('div.hl-firstlast-ch.first-chapter a .barunew').text().trim();
+    const lastChapter = $('div.hl-firstlast-ch a').eq(1).attr('href');
+    const lastChapterText = $('div.hl-firstlast-ch a').eq(1).find('.barunew').text().trim();
+    const rating = $('i[itemprop="ratingValue"]').text().trim();
+    const colInfo = {};
+    $('div.col-info-manga-box span').each((i, el) => {
+      const text = $(el).text().trim();
+      if (!$(el).find('a').length) {
+        const key = $(el).find('b').text().trim().replace(':', '');
+        const value = text.replace($(el).find('b').text().trim(), '').trim();
+        colInfo[key] = value;
+      }
+    });
     const genres = [];
     $('div.genre-info-manga a').each((i, el) => {
       genres.push($(el).attr('title'));
     });
-
-    const additionalInfo = [];
+    const description = $('div.entry-content.entry-content-single p').text().trim();
+    const additionalInfo = {};
     $('div.info-additional b').each((i, el) => {
-      additionalInfo.push($(el).text().trim());
+      const key = $(el).text().trim().replace(':', '');
+      const value = $(el).next().text().trim();
+      additionalInfo[key] = value;
     });
-
-    const similarManga = [];
-    $('#similiar .list-series-manga ul li').each((i, el) => {
-      const mangaUrl = $(el).find('a.series').attr('href');
-      const mangaImg = $(el).find('a.series img').attr('src');
-      similarManga.push({ url: mangaUrl, img: mangaImg });
+    const excerpt = $('div.excerpt-similiar').text().trim();
+    const spoilerImage = $('div#spoiler-manga img').attr('src');
+    const relatedManga = [];
+    $('div.related-manga a.series').each((i, el) => {
+      const mangaUrl = $(el).attr('href');
+      const imgSrc = $(el).find('img').attr('src');
+      relatedManga.push({ url: mangaUrl, image: imgSrc });
     });
-
     const chapters = [];
-    $('.box-list-chapter ul li').each((i, el) => {
+    $('div.box-list-chapter li').each((i, el) => {
       const chapterUrl = $(el).find('a').attr('href');
-      const chapterTitle = $(el).find('chapter').text().trim();
-      const chapterDate = $(el).find('.list-chapter-date').text().trim();
-      const chapterDownloadUrl = $(el).find('.dl a').attr('href');
-      chapters.push({ url: chapterUrl, title: chapterTitle, date: chapterDate, downloadUrl: chapterDownloadUrl });
+      const chapterText = $(el).find('.list-chapter-chapter').text().trim();
+      const date = $(el).find('.list-chapter-date').text().trim();
+      const year = date.match(/\d{4}/);
+      chapters.push({ url: chapterUrl, chapter: chapterText, date, year });
     });
 
-    return {
+    res.json({
       title,
+      firstChapter: { url: firstChapter, text: firstChapterText },
+      lastChapter: { url: lastChapter, text: lastChapterText },
       rating,
-      description,
-      firstChapter: { url: firstChapterUrl, title: firstChapterTitle },
-      latestChapter: { url: latestChapterUrl, title: latestChapterTitle },
-      infoBox,
+      colInfo,
       genres,
+      description,
       additionalInfo,
-      similarManga,
-      chapters
-    };
-
+      excerpt,
+      spoilerImage,
+      relatedManga,
+      chapters,
+    });
   } catch (error) {
-    console.error(error);
-    return null;
-  }
-}
-
-app.get('/manga/:endpoint', async (req, res) => {
-  const { endpoint } = req.params;
-  const mangaDetails = await fetchMangaDetails(endpoint);
-  if (mangaDetails) {
-    res.json(mangaDetails);
-  } else {
-    res.status(404).json({ error: 'Manga not found' });
+    res.status(500).json({ error: 'Error fetching data', details: error.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
