@@ -27,6 +27,8 @@ async function scrapeManga(endpoint) {
 
         const $ = cheerio.load(response.data);
         const title = $('h1.entry-title').text().trim();
+        if (!title) throw new Error('Failed to extract title. The page structure might have changed.');
+
         const firstChapterLink = $('.hl-firstlast-ch.first-chapter a').attr('href');
         const firstChapterText = $('.hl-firstlast-ch.first-chapter .barunew').text().trim();
         const latestChapterLink = $('.hl-firstlast-ch:not(.first-chapter) a').attr('href');
@@ -82,8 +84,11 @@ async function scrapeManga(endpoint) {
             chapters,
         };
     } catch (error) {
-        console.error(error);
-        throw new Error('Failed to scrape manga details');
+        if (error.response) {
+            throw new Error(`Failed to request the manga page: ${error.response.status} ${error.response.statusText}`);
+        } else {
+            throw new Error(`An error occurred: ${error.message}`);
+        }
     }
 }
 
