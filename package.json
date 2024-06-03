@@ -1,7 +1,7 @@
 {
   "name": "manga-scraper",
   "version": "1.0.0",
-  "description": "A web scraper for manga information using Node.js, Express, and Cheerio",
+  "description": "A web scraper for manga information using Node.js, Express, Cheerio, and Puppeteer",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,13 +9,12 @@
   },
   "dependencies": {
     "axios": "^0.27.2",
-    "axios-cookiejar-support": "^3.0.0",
     "cheerio": "^1.0.0-rc.10",
+    "chrome-aws-lambda": "^10.1.0",
     "cors": "^2.8.5",
     "express": "^4.18.1",
-    "express-http-proxy": "^1.6.3",
     "helmet": "^5.0.2",
-    "tough-cookie": "^4.0.0"
+    "puppeteer-core": "^19.1.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.16"
