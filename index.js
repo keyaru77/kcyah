@@ -1,10 +1,8 @@
 const express = require('express');
-const axios = require('axios');
 const cheerio = require('cheerio');
 const helmet = require('helmet');
 const cors = require('cors');
-const { CookieJar } = require('tough-cookie');
-const { wrapper } = require('axios-cookiejar-support');
+const chromium = require('chrome-aws-lambda');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,20 +10,25 @@ const port = process.env.PORT || 3000;
 app.use(helmet());
 app.use(cors());
 
-// Function to scrape manga details
 async function scrapeManga(endpoint) {
-    const jar = new CookieJar();
-    const client = wrapper(axios.create({ jar }));
+    let browser = null;
 
     try {
-        const response = await client.get(`https://komikcast.cx/komik/${endpoint}`, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
+        browser = await chromium.puppeteer.launch({
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath,
+            headless: chromium.headless,
         });
 
-        const $ = cheerio.load(response.data);
+        const page = await browser.newPage();
+        await page.goto(`https://komikcast.cx/komik/${endpoint}`, {
+            waitUntil: 'networkidle2',
+        });
+
+        const content = await page.content();
+        const $ = cheerio.load(content);
+
         const title = $('h1.entry-title').text().trim();
         if (!title) throw new Error('Failed to extract title. The page structure might have changed.');
 
@@ -65,6 +68,8 @@ async function scrapeManga(endpoint) {
             });
         });
 
+        await browser.close();
+
         return {
             title,
             firstChapter: {
@@ -84,6 +89,7 @@ async function scrapeManga(endpoint) {
             chapters,
         };
     } catch (error) {
+        if (browser) await browser.close();
         if (error.response) {
             throw new Error(`Failed to request the manga page: ${error.response.status} ${error.response.statusText}`);
         } else {
