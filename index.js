@@ -13,7 +13,11 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL;
 
 app.get('/manga/:endpoint', async (req, res) => {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    executablePath: process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome'
+  });
   const page = await browser.newPage();
 
   try {
